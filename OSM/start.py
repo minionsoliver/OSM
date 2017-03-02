@@ -89,14 +89,28 @@ class UserPortal(object):
                             selected_host = selected.host_2_user.all()[host_choice]
 
                             md5_str = hashlib.md5(str(time.time()).encode()).hexdigest()
-                            print(md5_str)
-                            login_cmd = 'sshpass  -p {password} ssh {user}@{ip_addr} -o "StrictHostKeyChecking no"'\
+
+                            login_cmd = 'sshpass  -p {password} /usr/local/openssh_me/bin/ssh {user}@{ip_addr} -o "StrictHostKeyChecking no" -Z {md5_str}' \
                                 .format(password=selected_host.host_user.password,
                                         # port=selected_host.host.port,
                                         user=selected_host.host_user.username,
-                                        ip_addr=selected_host.host.ip_addr)
-                            ssh_instance = subprocess.run(login_cmd,shell=True)
+                                        ip_addr=selected_host.host.ip_addr,
+                                        md5_str=md5_str)
+                            print(login_cmd)
+                            # start trace session
+                            trace_session_script = settings.TRACE_SESSION_SCRIPT
+                            trace_obj = subprocess.Popen('%s %s' % (trace_session_script, md5_str),shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=settings.BASE_DIR)
+
+                            # Create Log
+                            models.SessionLog.objects.create(user=self.user,
+                                                             host_2_user=selected_host,
+                                                             session_tag=md5_str)
+                            ssh_instance = subprocess.run(login_cmd, shell=True)
                             print("Bye")
+                            print("trace session output", trace_obj.stdout.read(),
+                                  trace_obj.stderr.read().decode())
+
+
                     elif host_choice.isalpha():
                         if host_choice.lower() == 'b':
                             break
@@ -106,7 +120,10 @@ if __name__ == '__main__':
     # 以下三行表示在自定义的脚本中引入Django
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "OSM.settings")
     import django
+
     django.setup()
+    from OSM import settings
+    from audit import models
 
     obj = UserPortal()
     obj.interactive()
